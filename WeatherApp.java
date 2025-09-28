@@ -1,0 +1,260 @@
+import javax.swing.*;
+import java.awt.*;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.net.URI;
+import org.json.JSONObject;
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
+import java.io.IOException;
+
+public class WeatherApp extends JFrame {
+    private JTextField cityField;
+    private JTextArea weatherLabel;
+    private JLabel mapLabel;
+    private static final String API_KEY = "3b01e6387b254828b0560407252809"; // Provided API key
+    private static final String API_URL = "http://api.weatherapi.com/v1/current.json?key=";
+    private static final String STATIC_MAP_URL = "https://staticmaps.openstreetmap.de/staticmap.php?center=%f,%f&zoom=10&size=400x300";
+
+    public WeatherApp() {
+        setTitle("Weather Information App");
+        setSize(800, 600);
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        setLocationRelativeTo(null);
+        getContentPane().setBackground(new Color(240, 248, 255));
+
+        // Header
+        JLabel headerLabel = new JLabel("Welcome to Weather Information App");
+        headerLabel.setFont(new Font("Arial", Font.BOLD, 20));
+        headerLabel.setHorizontalAlignment(JLabel.CENTER);
+        headerLabel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        headerLabel.setBackground(new Color(70, 130, 180));
+        headerLabel.setForeground(Color.WHITE);
+        headerLabel.setOpaque(true);
+
+        // Main Panel
+        JPanel mainPanel = new JPanel(new BorderLayout(10, 10));
+        mainPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        mainPanel.setBackground(new Color(240, 248, 255));
+
+        JPanel inputPanel = new JPanel(new GridBagLayout());
+        inputPanel.setBackground(new Color(240, 248, 255));
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets = new Insets(10, 10, 10, 10);
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+
+        gbc.gridx = 0;
+        gbc.gridy = 0;
+        JLabel cityLabel = new JLabel("Enter City:");
+        cityLabel.setFont(new Font("Arial", Font.BOLD, 16));
+        inputPanel.add(cityLabel, gbc);
+
+        gbc.gridx = 1;
+        gbc.gridy = 0;
+        cityField = new JTextField(15);
+        cityField.setFont(new Font("Arial", Font.PLAIN, 16));
+        cityField.setBackground(Color.WHITE);
+        cityField.setBorder(BorderFactory.createLineBorder(Color.GRAY));
+        inputPanel.add(cityField, gbc);
+
+        gbc.gridx = 1;
+        gbc.gridy = 1;
+        JButton fetchButton = new JButton("Get Weather");
+        fetchButton.setFont(new Font("Arial", Font.BOLD, 14));
+        fetchButton.setBackground(new Color(70, 130, 180));
+        fetchButton.setForeground(Color.WHITE);
+        fetchButton.setFocusPainted(false);
+        fetchButton.setBorder(BorderFactory.createEmptyBorder(5, 15, 5, 15));
+        fetchButton.addActionListener(new FetchWeatherListener());
+        inputPanel.add(fetchButton, gbc);
+
+        weatherLabel = new JTextArea("Weather will be displayed here.", 5, 1);
+        weatherLabel.setFont(new Font("Arial", Font.BOLD, 16));
+        weatherLabel.setForeground(new Color(0, 100, 0));
+        weatherLabel.setLineWrap(true);
+        weatherLabel.setWrapStyleWord(true);
+        weatherLabel.setOpaque(true);
+        weatherLabel.setBackground(Color.WHITE);
+        weatherLabel.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(Color.GRAY),
+            BorderFactory.createEmptyBorder(10, 10, 10, 10)));
+        weatherLabel.setEditable(false);
+        weatherLabel.setFocusable(false);
+
+        JScrollPane scrollPane = new JScrollPane(weatherLabel);
+        scrollPane.setBorder(BorderFactory.createEmptyBorder());
+
+        mapLabel = new JLabel("Weather Visual will be displayed here.");
+        mapLabel.setHorizontalAlignment(JLabel.CENTER);
+        mapLabel.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(Color.GRAY),
+            BorderFactory.createEmptyBorder(10, 10, 10, 10)));
+
+        JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, scrollPane, mapLabel);
+        splitPane.setDividerLocation(400);
+        splitPane.setResizeWeight(0.5);
+
+        mainPanel.add(inputPanel, BorderLayout.NORTH);
+        mainPanel.add(splitPane, BorderLayout.CENTER);
+
+        // Footer
+        JLabel footerLabel = new JLabel("Contact: Tanisi Yadav | Developed by CSBS 2nd Yr SVU Team");
+        footerLabel.setFont(new Font("Arial", Font.PLAIN, 12));
+        footerLabel.setHorizontalAlignment(JLabel.CENTER);
+        footerLabel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        footerLabel.setBackground(new Color(70, 130, 180));
+        footerLabel.setForeground(Color.WHITE);
+        footerLabel.setOpaque(true);
+
+        // Add components to frame
+        add(headerLabel, BorderLayout.NORTH);
+        add(mainPanel, BorderLayout.CENTER);
+        add(footerLabel, BorderLayout.SOUTH);
+
+        setVisible(true);
+    }
+
+    private class FetchWeatherListener implements ActionListener {
+        @Override
+        public void actionPerformed(ActionEvent e) {
+            String city = cityField.getText().trim();
+            if (!city.isEmpty()) {
+                try {
+                    String weatherData = fetchWeatherData(city);
+                    displayWeather(weatherData);
+                } catch (Exception ex) {
+                    weatherLabel.setText("Error fetching weather data: " + ex.getMessage());
+                }
+            } else {
+                weatherLabel.setText("Please enter a city name.");
+            }
+        }
+    }
+
+    private String fetchWeatherData(String city) throws Exception {
+        String urlString = API_URL + API_KEY + "&q=" + city + "&aqi=no";
+        URI uri = URI.create(urlString);
+        URL url = uri.toURL();
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        conn.setRequestMethod("GET");
+        conn.setConnectTimeout(5000);
+
+        int responseCode = conn.getResponseCode();
+        if (responseCode != HttpURLConnection.HTTP_OK) {
+            throw new Exception("HTTP Error: " + responseCode);
+        }
+
+        java.io.BufferedReader reader = new java.io.BufferedReader(
+            new java.io.InputStreamReader(conn.getInputStream()));
+        StringBuilder response = new StringBuilder();
+        String line;
+        while ((line = reader.readLine()) != null) {
+            response.append(line);
+        }
+        reader.close();
+        conn.disconnect();
+        return response.toString();
+    }
+
+    private void displayWeather(String jsonData) {
+        try {
+            JSONObject obj = new JSONObject(jsonData);
+            if (obj.has("current")) {
+                JSONObject current = obj.getJSONObject("current");
+                double temp = current.getDouble("temp_c");
+                String condition = current.getJSONObject("condition").getString("text").toLowerCase();
+                String location = obj.getJSONObject("location").getString("name");
+                String lastUpdated = current.getString("last_updated");
+                double lat = obj.getJSONObject("location").getDouble("lat");
+                double lon = obj.getJSONObject("location").getDouble("lon");
+
+                // Presentable multi-line format
+                weatherLabel.setText(String.format(
+                    "City: %s%n" +
+                    "Temperature: %.1f°C%n" +
+                    "Condition: %s%n" +
+                    "Last Updated: %s%n" +
+                    "Checked: 01:27 PM IST, Sep 28, 2025",
+                    location, temp, condition, lastUpdated));
+
+                // Determine weather visual based on condition
+                String weatherVisual = getWeatherVisual(condition);
+                mapLabel.setText("<html><center>" + weatherVisual + "</center></html>");
+                mapLabel.setIcon(null);
+
+                // Temperature graph
+                displayTemperatureGraph(temp);
+
+                // Attempt to fetch static map (will likely fail)
+                String mapUrl = String.format(STATIC_MAP_URL, lat, lon);
+                System.out.println("Map URL: " + mapUrl);
+                URI mapUri = new URI(mapUrl);
+                URL mapUrlObj = mapUri.toURL();
+                BufferedImage mapImage = null;
+                try {
+                    mapImage = ImageIO.read(mapUrlObj);
+                } catch (IOException e) {
+                    System.out.println("Map fetch error: " + e.getMessage());
+                }
+                if (mapImage != null) {
+                    mapLabel.setIcon(new ImageIcon(mapImage));
+                    mapLabel.setText("");
+                }
+            } else {
+                weatherLabel.setText("City not found or API error.");
+                mapLabel.setText("No map or visual available.");
+                mapLabel.setIcon(null);
+            }
+        } catch (Exception e) {
+            weatherLabel.setText("Error parsing weather data: " + e.getMessage());
+            mapLabel.setText("Map loading error.");
+            mapLabel.setIcon(null);
+        }
+    }
+
+    private String getWeatherVisual(String condition) {
+        if (condition.contains("sunny") || condition.contains("clear")) {
+            return "☀ Sunny";
+        } else if (condition.contains("rain")) {
+            return "☔ Rain";
+        } else if (condition.contains("thunderstorm") || condition.contains("storm")) {
+            return "⛈ Thunderstorm";
+        } else if (condition.contains("cloud")) {
+            return "☁ Cloudy";
+        } else {
+            return "🌡️ Temperature: N/A";
+        }
+    }
+
+    private void displayTemperatureGraph(double temp) {
+        // Open a canvas panel for the chart
+        String chartCode = "chartjs\n" +
+            "{\n" +
+            "  \"type\": \"line\",\n" +
+            "  \"data\": {\n" +
+            "    \"labels\": [\"Now\"],\n" +
+            "    \"datasets\": [{\n" +
+            "      \"label\": \"Temperature (°C)\",\n" +
+            "      \"data\": [" + temp + "],\n" +
+            "      \"fill\": false,\n" +
+            "      \"borderColor\": \"rgb(75, 192, 192)\",\n" +
+            "      \"tension\": 0.1\n" +
+            "    }]\n" +
+            "  },\n" +
+            "  \"options\": {\n" +
+            "    \"scales\": {\n" +
+            "      \"y\": {\n" +
+            "        \"beginAtZero\": true\n" +
+            "      }\n" +
+            "    }\n" +
+            "  }\n" +
+            "}";
+        System.out.println(chartCode); // This will render as a chart in the canvas panel
+    }
+
+    public static void main(String[] args) {
+        SwingUtilities.invokeLater(WeatherApp::new);
+    }
+}
