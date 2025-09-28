@@ -1,0 +1,3 @@
+interface WeatherVisualStrategy {
+    String getVisual();
+}

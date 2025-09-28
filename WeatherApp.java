@@ -2,21 +2,15 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.net.URI;
+import org.openstreetmap.gui.jmapviewer.JMapViewer;
 import org.json.JSONObject;
-import javax.imageio.ImageIO;
-import java.awt.image.BufferedImage;
-import java.io.IOException;
 
 public class WeatherApp extends JFrame {
     private JTextField cityField;
     private JTextArea weatherLabel;
     private JLabel mapLabel;
-    private static final String API_KEY = "3b01e6387b254828b0560407252809"; // Provided API key
-    private static final String API_URL = "http://api.weatherapi.com/v1/current.json?key=";
-    private static final String STATIC_MAP_URL = "https://staticmaps.openstreetmap.de/staticmap.php?center=%f,%f&zoom=10&size=400x300";
+    private JMapViewer mapViewer;
+    private WeatherService weatherService = new WeatherService();
 
     public WeatherApp() {
         setTitle("Weather Information App");
@@ -86,13 +80,20 @@ public class WeatherApp extends JFrame {
         JScrollPane scrollPane = new JScrollPane(weatherLabel);
         scrollPane.setBorder(BorderFactory.createEmptyBorder());
 
-        mapLabel = new JLabel("Weather Visual will be displayed here.");
+        mapViewer = new JMapViewer();
+        mapViewer.setZoomControlsVisible(false);
+        mapLabel = new JLabel("Map will be displayed here.");
         mapLabel.setHorizontalAlignment(JLabel.CENTER);
         mapLabel.setBorder(BorderFactory.createCompoundBorder(
             BorderFactory.createLineBorder(Color.GRAY),
             BorderFactory.createEmptyBorder(10, 10, 10, 10)));
 
-        JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, scrollPane, mapLabel);
+        JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, scrollPane, new JPanel() {
+            {
+                setLayout(new BorderLayout());
+                add(mapViewer, BorderLayout.CENTER);
+            }
+        });
         splitPane.setDividerLocation(400);
         splitPane.setResizeWeight(0.5);
 
@@ -108,7 +109,6 @@ public class WeatherApp extends JFrame {
         footerLabel.setForeground(Color.WHITE);
         footerLabel.setOpaque(true);
 
-        // Add components to frame
         add(headerLabel, BorderLayout.NORTH);
         add(mainPanel, BorderLayout.CENTER);
         add(footerLabel, BorderLayout.SOUTH);
@@ -122,7 +122,7 @@ public class WeatherApp extends JFrame {
             String city = cityField.getText().trim();
             if (!city.isEmpty()) {
                 try {
-                    String weatherData = fetchWeatherData(city);
+                    String weatherData = weatherService.fetchWeatherData(city);
                     displayWeather(weatherData);
                 } catch (Exception ex) {
                     weatherLabel.setText("Error fetching weather data: " + ex.getMessage());
@@ -131,31 +131,6 @@ public class WeatherApp extends JFrame {
                 weatherLabel.setText("Please enter a city name.");
             }
         }
-    }
-
-    private String fetchWeatherData(String city) throws Exception {
-        String urlString = API_URL + API_KEY + "&q=" + city + "&aqi=no";
-        URI uri = URI.create(urlString);
-        URL url = uri.toURL();
-        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-        conn.setRequestMethod("GET");
-        conn.setConnectTimeout(5000);
-
-        int responseCode = conn.getResponseCode();
-        if (responseCode != HttpURLConnection.HTTP_OK) {
-            throw new Exception("HTTP Error: " + responseCode);
-        }
-
-        java.io.BufferedReader reader = new java.io.BufferedReader(
-            new java.io.InputStreamReader(conn.getInputStream()));
-        StringBuilder response = new StringBuilder();
-        String line;
-        while ((line = reader.readLine()) != null) {
-            response.append(line);
-        }
-        reader.close();
-        conn.disconnect();
-        return response.toString();
     }
 
     private void displayWeather(String jsonData) {
@@ -170,66 +145,35 @@ public class WeatherApp extends JFrame {
                 double lat = obj.getJSONObject("location").getDouble("lat");
                 double lon = obj.getJSONObject("location").getDouble("lon");
 
-                // Presentable multi-line format
-                weatherLabel.setText(String.format(
-                    "City: %s%n" +
-                    "Temperature: %.1f°C%n" +
-                    "Condition: %s%n" +
-                    "Last Updated: %s%n" +
-                    "Checked: 01:27 PM IST, Sep 28, 2025",
-                    location, temp, condition, lastUpdated));
-
-                // Determine weather visual based on condition
-                String weatherVisual = getWeatherVisual(condition);
-                mapLabel.setText("<html><center>" + weatherVisual + "</center></html>");
-                mapLabel.setIcon(null);
-
-                // Temperature graph
+                weatherLabel.setText(weatherService.getWeatherDisplay(jsonData));
+                displayWeatherVisual(condition);
                 displayTemperatureGraph(temp);
-
-                // Attempt to fetch static map (will likely fail)
-                String mapUrl = String.format(STATIC_MAP_URL, lat, lon);
-                System.out.println("Map URL: " + mapUrl);
-                URI mapUri = new URI(mapUrl);
-                URL mapUrlObj = mapUri.toURL();
-                BufferedImage mapImage = null;
-                try {
-                    mapImage = ImageIO.read(mapUrlObj);
-                } catch (IOException e) {
-                    System.out.println("Map fetch error: " + e.getMessage());
-                }
-                if (mapImage != null) {
-                    mapLabel.setIcon(new ImageIcon(mapImage));
-                    mapLabel.setText("");
-                }
+                displayMap(lat, lon);
             } else {
                 weatherLabel.setText("City not found or API error.");
-                mapLabel.setText("No map or visual available.");
-                mapLabel.setIcon(null);
+                mapViewer.setDisplayPosition(new org.openstreetmap.gui.jmapviewer.Coordinate(0, 0), 1); // Default position with zoom level
+                mapLabel.setText("No map available.");
             }
         } catch (Exception e) {
             weatherLabel.setText("Error parsing weather data: " + e.getMessage());
             mapLabel.setText("Map loading error.");
-            mapLabel.setIcon(null);
         }
     }
 
-    private String getWeatherVisual(String condition) {
-        if (condition.contains("sunny") || condition.contains("clear")) {
-            return "☀ Sunny";
-        } else if (condition.contains("rain")) {
-            return "☔ Rain";
-        } else if (condition.contains("thunderstorm") || condition.contains("storm")) {
-            return "⛈ Thunderstorm";
-        } else if (condition.contains("cloud")) {
-            return "☁ Cloudy";
-        } else {
-            return "🌡️ Temperature: N/A";
-        }
+    private void displayWeatherVisual(String condition) {
+        WeatherVisualStrategy strategy = getWeatherVisualStrategy(condition);
+        mapLabel.setText("<html><center>" + strategy.getVisual() + "</center></html>");
+    }
+
+    private WeatherVisualStrategy getWeatherVisualStrategy(String condition) {
+        if (condition.contains("sunny") || condition.contains("clear")) return new SunnyVisual();
+        else if (condition.contains("rain")) return new RainVisual();
+        else if (condition.contains("thunderstorm") || condition.contains("storm")) return new ThunderstormVisual();
+        else if (condition.contains("cloud")) return new CloudyVisual();
+        else return new DefaultVisual();
     }
 
     private void displayTemperatureGraph(double temp) {
-        // Open a canvas panel for the chart
         String chartCode = "chartjs\n" +
             "{\n" +
             "  \"type\": \"line\",\n" +
@@ -251,7 +195,12 @@ public class WeatherApp extends JFrame {
             "    }\n" +
             "  }\n" +
             "}";
-        System.out.println(chartCode); // This will render as a chart in the canvas panel
+        System.out.println(chartCode); // Render in canvas panel
+    }
+
+    private void displayMap(double lat, double lon) {
+        mapViewer.setDisplayPosition(new org.openstreetmap.gui.jmapviewer.Coordinate(lat, lon), 10);
+        mapLabel.setVisible(false); // Hide fallback label when map is active
     }
 
     public static void main(String[] args) {
